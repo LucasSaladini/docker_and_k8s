@@ -1,0 +1,89 @@
+# ========================
+# Visual Studio / .NET
+# ========================
+bin/
+obj/
+Debug/
+Release/
+AppPackages/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.ncb
+*.VC.db
+*.VC.opendb
+*.pidb
+*.svclog
+*.pdb
+*.cache
+*.log
+*.vs/
+.vscode/
+
+# ========================
+# NuGet
+# ========================
+*.nupkg
+packages/
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ========================
+# Rider
+# ========================
+.idea/
+
+# ========================
+# OS generated files
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# ========================
+# Docker
+# ========================
+# Imagens, containers, volumes e logs
+**/docker-compose.override.yml
+docker-compose.override.yml
+*.dockerfile
+*.log
+*.pid
+docker-compose.override.yml
+**/Dockerfile
+
+# ========================
+# Kubernetes
+# ========================
+# Arquivos gerados por kubectl ou helm
+*.kubeconfig
+*.yaml
+*.yml
+*.local.yaml
+*.local.yml
+*.kustomization
+.kube/
+helmfile.lock
+charts/
+
+# ========================
+# Logs / Temp
+# ========================
+logs/
+tmp/
+*.tmp
+
+# ========================
+# Other
+# ========================
+.idea/
+.vscode/
+.env
+.env.local
+.env.*.local
+.secrets/
