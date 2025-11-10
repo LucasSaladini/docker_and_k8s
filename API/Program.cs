@@ -1,95 +1,93 @@
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Serilog;
-using HealthChecks.UI.Client;
-using Microsoft.AspNetCore.Mvc;
 using Prometheus;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===== 1️⃣ Logging =====
+// ========== LOGGING ==========
 builder.Host.UseSerilog((ctx, lc) =>
 {
     lc.WriteTo.Console()
-      .Enrich.FromLogContext();
+      .MinimumLevel.Debug()
+      .Enrich.FromLogContext()
+      .Enrich.WithProperty("Application", "DockerAndK8sApi");
 });
 
-// ===== 2️⃣ Services =====
+// ========== SERVICES ==========
 builder.Services.AddHttpClient("ExternalAPI", client =>
 {
     client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
-// ===== 3️⃣ HealthChecks =====
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// ========== HEALTH CHECKS ==========
 builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy())
+    .AddCheck("Banco de Dados", () =>
+        HealthCheckResult.Unhealthy("Banco de dados ainda não configurado"))
+    .AddCheck("Cache Redis", () =>
+    {
+        var delay = new Random().Next(100, 800);
+        return delay < 500
+            ? HealthCheckResult.Healthy($"Tempo de resposta: {delay}ms")
+            : HealthCheckResult.Degraded($"Tempo de resposta alto: {delay}ms");
+    })
+    .AddCheck("Serviço Externo - Pagamentos", () =>
+    {
+        var available = new Random().Next(0, 3);
+        return available switch
+        {
+            0 => HealthCheckResult.Healthy("Serviço OK"),
+            1 => HealthCheckResult.Degraded("Serviço lento"),
+            _ => HealthCheckResult.Unhealthy("Serviço indisponível"),
+        };
+    })
+    .AddCheck("CPU Utilização", () =>
+    {
+        var cpuUsage = new Random().Next(10, 95);
+        return cpuUsage < 70
+            ? HealthCheckResult.Healthy($"CPU: {cpuUsage}%")
+            : HealthCheckResult.Degraded($"CPU Alta: {cpuUsage}%");
+    })
     .AddUrlGroup(
         new Uri("https://jsonplaceholder.typicode.com/posts/1"),
         name: "external-api",
         timeout: TimeSpan.FromSeconds(5)
     );
 
-// ===== 4️⃣ Swagger =====
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
 var app = builder.Build();
 
-// ===== 5️⃣ Middleware =====
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
-
+// ========== MIDDLEWARE ==========
 app.UseSerilogRequestLogging();
+
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
+
+app.UseRouting();
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ===== 6️⃣ Endpoints =====
+app.UseMetricServer();
+app.UseHttpMetrics();
 
-// Ping
-app.MapGet("/ping", () => Results.Ok("pong"))
-   .WithName("Ping")
-   .WithOpenApi();
+// ========== ENDPOINTS ==========
+app.MapControllers();
 
-// External API Call
-app.MapGet("/external", async ([FromServices] IHttpClientFactory httpClientFactory,
-                               [FromServices] ILogger<Program> logger) =>
-{
-    var client = httpClientFactory.CreateClient("ExternalAPI");
-    try
-    {
-        var response = await client.GetAsync("posts/1");
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("External API returned non-success status: {StatusCode}", response.StatusCode);
-            return Results.Problem($"External API error: {response.StatusCode}");
-        }
-
-        var data = await response.Content.ReadFromJsonAsync<object>();
-        logger.LogInformation("External API call successful");
-        return Results.Ok(data);
-    }
-    catch (TaskCanceledException)
-    {
-        logger.LogError("External API call timed out");
-        return Results.Problem("External API call timed out");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error calling external API");
-        return Results.Problem("Unexpected error calling external API");
-    }
-})
-.WithName("ExternalCall")
-.WithOpenApi();
-
-// Health Checks (liveness/readiness)
-app.MapHealthChecks("/health/live", new HealthCheckOptions
+app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = check => check.Name == "self",
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
@@ -99,8 +97,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-// Metrics Prometheus
-app.UseMetricServer(); // endpoint /metrics
-app.UseHttpMetrics();  // coleta métricas de HTTP
+app.MapGet("/ping", () => Results.Ok("pong")).WithName("Ping").WithOpenApi();
+
+app.MapGet("/", () => "API principal rodando — HealthChecks disponíveis em /health");
 
 app.Run();
